@@ -5,6 +5,8 @@
 This project implements a 2D drone simulation using a multi-process architecture and a shared blackboard data structure.  
 Processes communicate through POSIX shared memory and synchronize using a POSIX named semaphore.
 
+![Demo](Image/demo.gif)
+
 The system consists of:
 - A drone physics engine (Dynamics)
 - A visualization interface (Window)
@@ -51,34 +53,29 @@ The architecture follows the classical Blackboard Model:
 ### Architecture Diagram
 
 ```
-                       +----------------------+
-                       |       Master         |
-                       |   (Process Spawner)  |
-                       +----------+-----------+
-                                  |
-                forks & execs     |
-                                  v
-    +-------------------+-------------------+-------------------+
-    |                   |                   |                   |
-    v                   v                   v                   v
-+--------+        +-----------+       +-----------+       +-----------+
-|Blackbd |        | Dynamics  |       |  Window   |       | Keyboard  |
-| blb.out|        | dyn.out  |       | win.out   |       | key.out   |
-+---+----+        +-----+-----+       +-----+-----+       +-----+-----+
-    |                   |                   |                   |
-    |                   |                   |                   |
-    |                   |                   |                   |
-    |          +--------+-------------------+-----------------------+
-    |          |           Shared Memory (newBlackboard)            |
-    |          | POSIX shm_open + mmap + named semaphore (SEM_NAME) |
-    |          +--------+-------------------+-----------------------+
-    |                   |                   |                   |
-    v                   v                   v                   v
-+-----------+     +-----------+       +-----------+       +-----------+
-| Obstacle  |     |  Target   |       |  (Other)  |       |   ...     |
-| obs.out   |     | tar.out   |       |           |       |           |
-+-----------+     +-----------+       +-----------+       +-----------+
+                            +----------------------+
+                            |    Master Process    |
+                            |   (System Supervisor)|
+                            +-----------+----------+
+                                        |
+                               Spawns Children
+                                        |
+      +--------------+--------------+---+--------------+--------------+
+      |              |              |                  |              |
+      v              v              v                  v              v
++-----------+  +-----------+  +-----------+      +-----------+  +-----------+
+| Blackboard|  | Dynamics  |  |  Window   |      | Keyboard  |  | Generators|
+| (blb.out) |  | (dyn.out) |  | (win.out) |      | (key.out) |  | (obs/tar) |
++-----+-----+  +-----+-----+  +-----+-----+      +-----+-----+  +-----+-----+
+      |              |              |                  |              |
+      |              |              |                  |              |
+      v              v              v                  v              v
++-------------------------------------------------------------------------+
+|                       POSIX SHARED MEMORY                               |
+|     (Data Structure: newBlackboard  |  Synchronization: SEM_NAME)       |
++-------------------------------------------------------------------------+
 ```
+
 
 ## 4. Components
 
@@ -183,4 +180,5 @@ This implementation includes:
 - Physics engine with repulsive/attractive fields  
 
 **Watchdog, logging system, and fault-tolerance mechanisms are not part of this version.**
+
 
