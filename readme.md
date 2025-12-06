@@ -85,20 +85,47 @@ The architecture follows the classical Blackboard Model:
 - Periodically computes score  
 - Reads `parameters.txt` to update counts of obstacles and targets  
 
-### Dynamics (`dynamics.c`)
-Implements physics based on a discrete-time mass-damper model:
+### Dynamics (dynamics.c)
 
-```
-x_i = (Fx * DT² / M)
-      - (K/M) * (x_{i-1} - x_{i-2}) * DT
-      + (2 * x_{i-1} - x_{i-2})
+This module computes the drone motion using the discrete-time second-order dynamic model defined in the assignment.
+
+**Mathematical update equation (Assignment Eq. 3):**
+
+$$
+x_i = \frac{F_x \, DT^2}{M}
+      - \frac{K}{M}(x_{i-1} - x_{i-2})\,DT
+      + (2x_{i-1} - x_{i-2})
+$$
+
+and similarly:
+
+$$
+y_i = \frac{F_y \, DT^2}{M}
+      - \frac{K}{M}(y_{i-1} - y_{i-2})\,DT
+      + (2y_{i-1} - y_{i-2})
+$$
+
+**Code implementation:**
+
+```c
+double x_i_new =
+    (Fx * DT * DT / M)
+  - (K * (x_i - x_i_minus_1) * DT / M)
+  + (2 * x_i - x_i_minus_1);
+
+double y_i_new =
+    (Fy * DT * DT / M)
+  - (K * (y_i - y_i_minus_1) * DT / M)
+  + (2 * y_i - y_i_minus_1);
 ```
 
-Additional features:
-- Repulsive force from obstacles  
-- Attractive force from targets  
-- Collision detection  
-- Travel distance accumulation  
+**Force components:**
+- Command forces from keyboard  
+- Repulsive forces from obstacles (Latombe/Khatib model)  
+- Attractive forces from targets  
+- Collision detection & distance accumulation  
+- Boundary constraints (geo-fence)
+
 
 ### Window (`window.c`)
 Ncurses visualization:
@@ -180,5 +207,6 @@ This implementation includes:
 - Physics engine with repulsive/attractive fields  
 
 **Watchdog, logging system, and fault-tolerance mechanisms are not part of this version.**
+
 
 
