@@ -206,7 +206,11 @@ This implementation includes:
 - Ncurses visual/interactive UI  
 - Physics engine with repulsive/attractive fields  
 
-**Watchdog, logging system, and fault-tolerance mechanisms are not part of this version.**
+**Watchdog and logging systems mechanisms are not part of this version.**
 
+
+### GitHub Repository
+The complete source code of this project is available at:
+https://github.com/mahdibaghban27/blackboard-drone-simulator
 
 
