@@ -1,2 +1,0 @@
-num_obstacles=15
-num_targets=10

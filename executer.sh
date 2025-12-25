@@ -1,23 +1,8 @@
-#!/bin/bash
-
-BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
-SRC_DIR="$BASE_DIR/src"
-
-echo "=== Compiling in $SRC_DIR ==="
-cd "$SRC_DIR"
-
-gcc -o blb.out blackboard.c -lrt -lm
-gcc -o dyn.out dynamics.c -lrt -lm
-gcc -o key.out keyboard.c -lncurses -lrt
-gcc -o win.out window.c -lncurses -lrt
-gcc -o obs.out obstacle.c -lrt -lm
-gcc -o tar.out target.c -lrt -lm
-gcc -o master master.c
-
-echo "=== Compilation done ==="
-echo "=== Sleeping 2 seconds... ==="
-sleep 2
-
-echo "=== Running master FROM src (cwd = src) ==="
-./master   
+gcc -o master               src/master.c -lcjson -lpthread
+gcc -o bins/Dynamics.out    src/dynamics.c -lm -lpthread
+gcc -o bins/Keyboard.out    src/keyboard.c -lncurses -lpthread
+gcc -o bins/Window.out      src/window.c -lncurses -lpthread
+gcc -o bins/Watchdog.out    src/watchdog.c -lpthread
+gcc -o bins/Obstacle.out    src/obstacle.c -lpthread
+gcc -o bins/Target.out      src/target.c -lpthread
 
