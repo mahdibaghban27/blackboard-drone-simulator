@@ -8,8 +8,10 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <math.h>
+#include <time.h>
+#include <stdbool.h>
 #include "blackboard.h"
-
+#include "logger.h"
 
 
 void compute_repulsive_force(double *Fx, double *Fy, newBlackboard *bb);
@@ -17,16 +19,6 @@ void compute_attractive_force(double *Fx, double *Fy, newBlackboard *bb);
 
 
 int main() {
-    // int shmid = shmget(SHM_KEY, sizeof(newBlackboard), 0666);
-    // if (shmid == -1) {
-    //     perror("shmget failed");
-    //     return 1;
-    // }
-    // newBlackboard *bb = (newBlackboard *)shmat(shmid, NULL, 0);
-    // if (bb == (void *)-1) {
-    //     perror("shmat failed");
-    //     return 1;
-    // }
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
@@ -42,126 +34,134 @@ int main() {
         perror("sem_open failed");
         return 1;
     }
+    int fd = open_watchdog_pipe(PIPE_DYNAMICS);
+    logger("Dynamics started. PID: %d", getpid());
 
     double vx = 0, vy = 0;
-    bb->drone_x = 0;
-    bb->drone_y = 0;
-    double x_i = bb->drone_x, x_i_minus_1 = bb->drone_x, x_i_minus_2 = bb->drone_x;
-    double y_i = bb->drone_y, y_i_minus_1 = bb->drone_y, y_i_minus_2 = bb->drone_y;
+    double Fx, Fy, repulsive_Fx, repulsive_Fy, attractive_Fx=0, attractive_Fy=0;
+    double x_i = bb->drone_x, x_i_minus_1 = bb->drone_x, x_i_new;
+    double y_i = bb->drone_y, y_i_minus_1 = bb->drone_y, y_i_new;
+    time_t now = time(NULL);
 
     while (1){
         sem_wait(sem);
 
-        double Fx = bb->command_force_x;
-        double Fy = bb->command_force_y;
-        double repulsive_Fx = 0.0, repulsive_Fy = 0.0;
-        double attractive_Fx = 0.0, attractive_Fy = 0.0;
-        compute_repulsive_force(&repulsive_Fx, &repulsive_Fy, bb);
-        compute_attractive_force(&attractive_Fx, &attractive_Fy, bb);
+        Fx = bb->command_force_x;
+        Fy = bb->command_force_y;
+        repulsive_Fx = 0.0, repulsive_Fy = 0.0;
+        attractive_Fx = 0.0, attractive_Fy = 0.0;
+        if (bb->state != 0){  // only calculate these when running. the rest of the loop doesn't matter because they WILL be 0
+            compute_repulsive_force(&repulsive_Fx, &repulsive_Fy, bb);
+            compute_attractive_force(&attractive_Fx, &attractive_Fy, bb);
+        }
         Fx += repulsive_Fx + attractive_Fx;
         Fy += repulsive_Fy + attractive_Fy;
 
-        double x_i_new = (Fx * DT * DT / M) - (K * (x_i - x_i_minus_1) * DT / M) + (2 * x_i - x_i_minus_1);
-        double y_i_new = (Fy * DT * DT / M) - (K * (y_i - y_i_minus_1) * DT / M) + (2 * y_i - y_i_minus_1);
-
+        x_i_new = (1/(bb->physix.mass+bb->physix.visc_damp_coef*DT)) * (Fx * DT * DT - bb->physix.mass * (x_i_minus_1-2*x_i) + bb->physix.visc_damp_coef * DT * x_i);
+        y_i_new = (1/(bb->physix.mass+bb->physix.visc_damp_coef*DT)) * (Fy * DT * DT - bb->physix.mass * (y_i_minus_1-2*y_i) + bb->physix.visc_damp_coef * DT * y_i);
         bb->drone_x = x_i_new;
         bb->drone_y = y_i_new;
-
-        x_i_minus_2 = x_i_minus_1;
         x_i_minus_1 = x_i;
         x_i = x_i_new;
-
-        y_i_minus_2 = y_i_minus_1;
         y_i_minus_1 = y_i;
         y_i = y_i_new;
 
-        // printf("Fx: %.2f, Fy: %.2f\n", Fx, Fy);
+        if (bb->drone_x < 1) { bb->drone_x = 1; vx = 0; Fx = 0;}
+        if (bb->drone_x > bb->max_width-1) { bb->drone_x = bb->max_width-2; vx = 0; Fx = 0;}
+        if (bb->drone_y < 1) { bb->drone_y = 1; vy = 0; Fy = 0;} 
+        if (bb->drone_y > bb->max_height-1) { bb->drone_y = bb->max_height-2; vy = 0; Fy = 0;}
 
-        if (bb->drone_x < 1) { bb->drone_x = 1; vx = 0; }
-        if (bb->drone_x > WIN_SIZE_X-1) { bb->drone_x = WIN_SIZE_X-1; vx = 0; }
-        if (bb->drone_y < 1) { bb->drone_y = 1; vy = 0; } 
-        if (bb->drone_y > WIN_SIZE_Y-1) { bb->drone_y = WIN_SIZE_Y-1; vy = 0; }
-
-        for (int i=0; i<bb->n_obstacles; i++){
+        for (int i=0; i<bb->n_obstacles; i++){ // TODO MAYBE MERGE WITH OTHER LOOPS
             if (bb->drone_x == bb->obstacle_xs[i] && bb->drone_y == bb->obstacle_ys[i]){
                 bb->stats.hit_obstacles += 1;
-              
-            }
+                bb->obstacle_xs[i] = -1;
+                bb->obstacle_ys[i] = -1;
+                logger("Drone hit an obstacle at position (%d, %d)", bb->drone_x, bb->drone_y);
+            } 
         }
         for (int i=0; i<bb->n_targets; i++){
             if (bb->drone_x == bb->target_xs[i] && bb->drone_y == bb->target_ys[i]){
                 bb->stats.hit_targets += 1;
                 bb->target_xs[i] = -1;
                 bb->target_ys[i] = -1;
-                
+                logger("Drone got a target at position (%d, %d)", bb->drone_x, bb->drone_y);
             }
         }
-        if (x_i != x_i_minus_1 || y_i != y_i_minus_1){
+        if (x_i != x_i_minus_1 || y_i != y_i_minus_1){  
             bb->stats.distance_traveled += sqrt((x_i - x_i_minus_1) * (x_i - x_i_minus_1) + (y_i - y_i_minus_1) * (y_i - y_i_minus_1));
         }
-
         sem_post(sem);
+        if (difftime(time(NULL), now) >= 3){
+            send_heartbeat(fd);
+            now = time(NULL);
+        }
         usleep(DT * 1000000);
     }
-    
+    if (fd >= 0) { close(fd); }
     munmap(bb, sizeof(newBlackboard));
     return 0;
 }
 
-
 void compute_repulsive_force(double *Fx, double *Fy, newBlackboard *bb) {
     *Fx = 0;
     *Fy = 0;
-
-    const double epsilon = 1e-6; // Small value to avoid division by zero
+    double dx, dy, dist, repulsive;
 
     for (int i = 0; i < bb->n_obstacles; i++) {
-        double dx = bb->obstacle_xs[i] - bb->drone_x;
-        double dy = bb->obstacle_ys[i] - bb->drone_y;
-        double dist = sqrt(dx * dx + dy * dy);
-
-        if (dist < R && dist > 0) {
-            double repulsive = ETA * (1.0 / dist - 1.0 / R) / (dist * dist + epsilon);
-            *Fx -= repulsive * (dx / dist);
-            *Fy -= repulsive * (dy / dist);
+        if (bb->obstacle_xs[i] < 1 || bb->obstacle_ys[i] < 1 || bb->obstacle_xs[i] >= bb->max_width || bb->obstacle_ys[i] >= bb->max_height) {
+            continue;
+        }
+        dx = bb->obstacle_xs[i] - bb->drone_x;  
+        dy = bb->obstacle_ys[i] - bb->drone_y;
+        dist = sqrt(dx * dx + dy * dy);
+        if (dist < bb->physix.radius && dist > 0) {
+            repulsive = bb->physix.obst_repl_coef * 3 * (1.0 / dist - 1.0 / bb->physix.radius) / (dist * dist + EPSILON);
+            *Fx -= repulsive * (dx / (dist + EPSILON));
+            *Fy -= repulsive * (dy / (dist + EPSILON));
         }
     } // Obstacles
 
-    // if (bb->drone_x < R) {
-    //     double dist = bb->drone_x + epsilon;
-    //     double repulsive = 0.000001 / (dist * dist);
-    //     *Fx += repulsive;
-    // } // Left wall
-    // if (WIN_SIZE_X - bb->drone_x < R) {
-    //     double dist = WIN_SIZE_X - bb->drone_x + epsilon;
-    //     double repulsive = 0.000001 / (dist * dist);
-    //     *Fx -= repulsive;
-    // } // Right wall
-    // if (bb->drone_y < R) {
-    //     double dist = bb->drone_y + epsilon;
-    //     double repulsive = 0.000001 / (dist * dist);
-    //     *Fy += repulsive;
-    // } // Top wall
-    // if (WIN_SIZE_Y - bb->drone_y < R) {
-    //     double dist = WIN_SIZE_Y - bb->drone_y + epsilon;
-    //     double repulsive = 0.000001 / (dist * dist);
-    //     *Fy -= repulsive;
-    // } // Bottom wall
+    if (bb->drone_x < bb->physix.radius) {
+        repulsive = bb->physix.obst_repl_coef * (1.0 / (bb->drone_x + EPSILON) - 1.0 / bb->physix.radius) / (bb->drone_x * bb->drone_x + EPSILON);
+        *Fx += repulsive;
+    } // Left wall
+    if (bb->max_width - bb->drone_x < bb->physix.radius) {
+        repulsive = bb->physix.obst_repl_coef * (1.0 / (bb->max_width - bb->drone_x + EPSILON) - 1.0 / bb->physix.radius) / ((bb->max_width - bb->drone_x) * (bb->max_width - bb->drone_x) + EPSILON);
+        *Fx -= repulsive;
+    } // Right wall
+    if (bb->drone_y < bb->physix.radius) {
+        repulsive = bb->physix.obst_repl_coef * (1.0 / (bb->drone_y + EPSILON) - 1.0 / bb->physix.radius) / (bb->drone_y * bb->drone_y + EPSILON);
+        *Fy += repulsive;
+    } // Top wall
+    if (bb->max_height - bb->drone_y < bb->physix.radius) {
+        repulsive = bb->physix.obst_repl_coef * (1.0 / (bb->max_height - bb->drone_y + EPSILON) - 1.0 / bb->physix.radius) / ((bb->max_height - bb->drone_y) * (bb->max_height - bb->drone_y) + EPSILON);
+        *Fy -= repulsive;
+    } // Bottom wall
+
+    // Limit the repulsion force to a maximum of 100  // TODO PARAMETER
+    if (*Fx > 100){ *Fx = 100;}
+    if (*Fy > 100){ *Fy = 100;}
+    if (*Fx < -100){ *Fx = -100;}
+    if (*Fy < -100){ *Fy = -100;}
 }
 
 void compute_attractive_force(double *Fx, double *Fy, newBlackboard *bb) {
     *Fx = 0;
     *Fy = 0;
+    double dx, dy, dist, attractive;
 
     for (int i = 0; i < bb->n_targets; i++) {
-        double dx = bb->target_xs[i] - bb->drone_x;
-        double dy = bb->target_ys[i] - bb->drone_y;
-        double dist = sqrt(dx * dx + dy * dy);
+        if (bb->target_xs[i] < 1 || bb->target_ys[i] < 1 || bb->target_xs[i] >= bb->max_width || bb->target_ys[i] >= bb->max_height) {
+            continue;
+        }
+        dx = bb->target_xs[i] - bb->drone_x;
+        dy = bb->target_ys[i] - bb->drone_y;
+        dist = sqrt(dx * dx + dy * dy);
 
-        if (dist < R && dist > 0) {
-            double attractive = ETA * (1.0 / dist - 1.0 / R) / (dist * dist);
-            *Fx += attractive * (dx / dist);
-            *Fy += attractive * (dy / dist);
+        if (dist < bb->physix.radius && dist > 0) {
+            attractive = bb->physix.obst_repl_coef * 0.05 * (dist);
+            *Fx += attractive * (dx / (dist + EPSILON));
+            *Fy += attractive * (dy / (dist + EPSILON));
         }
     }
 }
