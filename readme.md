@@ -252,7 +252,7 @@ After normal termination, no leftover FIFOs or shared memory objects should rema
 ---
 ## 10. Changelog (Fixes from Assignment 1 feedback)
 
-Based on the feedback from Assignment 1, the following significant issues were corrected and integrated into this Assignment 2 codebase (new code is highlighted in source files with `// FIX(A1): ...` comments).
+Based on the feedback from Assignment 1, the following significant issues were corrected and integrated into this Assignment 2 codebase.
 
 ### 1) Fix: "no pipe closing"
 **Problem (A1):** Named pipes (FIFOs) and pipe file descriptors were not properly released at shutdown, leaving `/tmp/*_pipe` files behind and causing resource leaks across runs.
@@ -276,6 +276,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ### GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
