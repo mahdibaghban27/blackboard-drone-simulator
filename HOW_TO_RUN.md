@@ -20,6 +20,8 @@ sudo apt install libncurses5-dev libncursesw5-dev
 ```bash
 chmod +x executer.sh
 ./executer.sh
+./master
 ```
 
 This script compiles all modules and launches the full multi-process simulation.
+
