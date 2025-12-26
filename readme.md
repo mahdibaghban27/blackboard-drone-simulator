@@ -201,6 +201,7 @@ chmod +x executer.sh
 ./executer.sh
 ./master
 ```
+After the simulation starts, press the **`I`** key to begin the simulation.
 
 This script:
 1. Switches to `src/`  
@@ -276,6 +277,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
