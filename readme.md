@@ -201,8 +201,10 @@ chmod +x executer.sh
 ./executer.sh
 ./master
 ```
+```
+After compilation, select option 1 for Assignment 2 and press Enter.
 After the simulation starts, press the **`I`** key to begin the simulation.
-
+```
 This script:
 1. Switches to `src/`  
 2. Compiles all modules  
@@ -277,6 +279,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
