@@ -120,18 +120,13 @@ This module computes the drone motion using the discrete-time second-order dynam
 **Mathematical update equation (Assignment Eq. 3):**
 
 $$
-x_i = \frac{F_x \, DT^2}{M}
-      - \frac{K}{M}\,(x_{i-1} - x_{i-2})\,DT
-      + \left(2x_{i-1} - x_{i-2}\right)
+x_i = \frac{F_x \, DT^2}{M} - \left(\frac{K}{M}\right)(x_{i-1}-x_{i-2})\,DT + (2x_{i-1}-x_{i-2})
 $$
 
-and similarly:
+$$
+y_i = \frac{F_y \, DT^2}{M} - \left(\frac{K}{M}\right)(y_{i-1}-y_{i-2})\,DT + (2y_{i-1}-y_{i-2})
+$$
 
-$$
-y_i = \frac{F_y \, DT^2}{M}
-      - \frac{K}{M}\,(y_{i-1} - y_{i-2})\,DT
-      + \left(2y_{i-1} - y_{i-2}\right)
-$$
 
 
 **Code implementation:**
@@ -260,5 +255,6 @@ After normal termination, no leftover FIFOs or shared memory objects should rema
 ### GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
