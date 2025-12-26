@@ -19,8 +19,9 @@ chmod +x executer.sh
 ./master
 ```
 ```
-After the simulation starts, press the **`I`** key to begin the simulation.
+After the simulation starts, press the `I` key to begin the simulation.
 ```
 This script compiles all modules and launches the full multi-process simulation.
+
 
 
