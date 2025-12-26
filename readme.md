@@ -72,34 +72,32 @@ The architecture follows the classical **Blackboard Model**:
                            |  (spawns/terminates) |
                            +----------+-----------+
                                       |
-      +-------------------------------+--------------------------------+
-      |               |               |                |               |
-      v               v               v                v               v
-+-----------+   +-----------+   +-----------+    +-----------+   +-----------+
-|  Window   |   | Keyboard  |   | Dynamics  |    | Obstacle  |   |  Target   |
-| (ncurses) |   | (ncurses) |   |  Engine   |    | Generator |   | Generator |
-+-----+-----+   +-----+-----+   +-----+-----+    +-----+-----+   +-----+-----+
-      \             |               /                  |               |
-       \            |              /                   |               |
-        \           |             /                    |               |
-         \          |            /                     |               |
-          v         v           v                      v               v
-+----------------------------------------------------------------------------------+
-|                         POSIX SHARED MEMORY (IPC CORE)                           |
-|            Data: newBlackboard   |   Sync: SEM_NAME   |   Name: SHM_NAME         |
-+----------------------------------------------------------------------------------+
+      +-------------------------------+---------------------------------------------+
+      |               |               |               |              |              |
+      v               v               v               v              v              v
++-----------+   +-----------+   +-----------+   +-----------+   +-----------+  +-----------+
+| Blackboard |   |  Window   |   | Keyboard  |   | Dynamics  |   | Obstacle  |  |  Target   |
+| (server)   |   | (ncurses) |   | (ncurses) |   |  Engine   |   | Generator |  | Generator |
++-----+-----+   +-----+-----+   +-----+-----+   +-----+-----+   +-----+-----+  +-----+-----+
+      |               \             |               /                 |              |
+      |                \            |              /                  |              |
+      v                 v           v             v                   v              v
++--------------------------------------------------------------------------------------------+
+|                         POSIX SHARED MEMORY (IPC CORE)                                     |
+|            Data: newBlackboard   |   Sync: SEM_NAME   |   Name: SHM_NAME                   |
++--------------------------------------------------------------------------------------------+
 
                            (Assignment 2 - Fault Detection)
-+-----------+         Heartbeat via Named Pipes (FIFO in /tmp)          +-----------+
-| Watchdog  | <------------------------------------------------------> | Processes |
-|           |   PIPE_WINDOW / PIPE_KEYBOARD / PIPE_DYNAMICS / ...       |           |
-+-----------+                                                           +-----------+
++-----------+        Heartbeat via Named Pipes (FIFO in /tmp)         +----------------------+
+| Watchdog  | <-----------------------------------------------------> |  All child processes |
+|           |   PIPE_WINDOW / PIPE_KEYBOARD / PIPE_DYNAMICS / ...     |  (send heartbeat)     |
++-----------+                                                          +----------------------+
 
                            (Assignment 2 - Systematic Debug Output)
-+----------------------------------------------------------------------------------+
-| LOGGER MODULE (logger.c / logger.h)                                              |
-| All components write systematic debug output to: logs/simulation.log              |
-+----------------------------------------------------------------------------------+
++--------------------------------------------------------------------------------------------+
+| LOGGER MODULE (logger.c / logger.h)                                                        |
+| All components write systematic debug output to: logs/simulation.log                        |
++--------------------------------------------------------------------------------------------+
 
 
 ```
@@ -279,6 +277,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
