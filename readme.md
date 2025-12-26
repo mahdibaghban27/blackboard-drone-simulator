@@ -12,68 +12,89 @@ The system consists of:
 - A visualization interface (Window)
 - A control interface (Keyboard)
 - Random obstacle and target generators
-- A central blackboard process
+- A central blackboard (shared state)
 - A master process that spawns and supervises all children
 
+**Assignment 2 additions:**
+- A **Watchdog** process that monitors component liveness using heartbeat messages.
+- A centralized **logger** that provides systematic debug output.
+- Proper **IPC cleanup** (shared memory, semaphore, named pipes) to avoid leftover resources.
 
+---
 
 ## 2. Repository Structure
+
+
 
 ```
 .
 ├── executer.sh
+├── config.json
+├── logs/
+│   └── simulation.log
 └── src
     ├── blackboard.c
     ├── blackboard.h
-    ├── blb.out
     ├── dynamics.c
-    ├── dyn.out
     ├── keyboard.c
-    ├── key.out
-    ├── master
-    ├── master.c
-    ├── obs.out
-    ├── obstacle.c
-    ├── parameters.txt
-    ├── target.c
-    ├── tar.out
     ├── window.c
-    └── win.out
+    ├── obstacle.c
+    ├── target.c
+    ├── watchdog.c
+    ├── logger.c
+    ├── logger.h
+    └── master.c
+
 ```
 
 ## 3. System Architecture
 
-The architecture follows the classical Blackboard Model:
+The architecture follows the classical **Blackboard Model**:
 
 - All processes share the same memory segment  
-- Processes cooperate indirectly  
+- Processes cooperate indirectly through the blackboard  
 - Synchronization is enforced using a named semaphore  
-- Master process handles spawning and shutdown  
+- The master process handles spawning, supervision, and shutdown  
+- A watchdog supervises process liveness using named pipes (FIFO)
 
 ### Architecture Diagram
 
 ```
-                            +----------------------+
-                            |    Master Process    |
-                            |   (System Supervisor)|
-                            +-----------+----------+
-                                        |
-                               Spawns Children
-                                        |
-      +--------------+--------------+---+--------------+--------------+
-      |              |              |                  |              |
-      v              v              v                  v              v
-+-----------+  +-----------+  +-----------+      +-----------+  +-----------+
-| Blackboard|  | Dynamics  |  |  Window   |      | Keyboard  |  | Generators|
-| (blb.out) |  | (dyn.out) |  | (win.out) |      | (key.out) |  | (obs/tar) |
-+-----+-----+  +-----+-----+  +-----+-----+      +-----+-----+  +-----+-----+
-      |              |              |                  |              |
-      |              |              |                  |              |
-      v              v              v                  v              v
-+-------------------------------------------------------------------------+
-|                       POSIX SHARED MEMORY                               |
-|     (Data Structure: newBlackboard  |  Synchronization: SEM_NAME)       |
-+-------------------------------------------------------------------------+
+                           +----------------------+
+                           |    Master Process    |
+                           |  (spawns/terminates) |
+                           +----------+-----------+
+                                      |
+      +-------------------------------+--------------------------------+
+      |               |               |                |               |
+      v               v               v                v               v
++-----------+   +-----------+   +-----------+    +-----------+   +-----------+
+|  Window   |   | Keyboard  |   | Dynamics  |    | Obstacle  |   |  Target   |
+| (ncurses) |   | (ncurses) |   |  Engine   |    | Generator |   | Generator |
++-----+-----+   +-----+-----+   +-----+-----+    +-----+-----+   +-----+-----+
+      \             |               /                  |               |
+       \            |              /                   |               |
+        \           |             /                    |               |
+         \          |            /                     |               |
+          v         v           v                      v               v
++----------------------------------------------------------------------------------+
+|                         POSIX SHARED MEMORY (IPC CORE)                           |
+|            Data: newBlackboard   |   Sync: SEM_NAME   |   Name: SHM_NAME         |
++----------------------------------------------------------------------------------+
+
+                           (Assignment 2 - Fault Detection)
++-----------+         Heartbeat via Named Pipes (FIFO in /tmp)          +-----------+
+| Watchdog  | <------------------------------------------------------> | Processes |
+|           |   PIPE_WINDOW / PIPE_KEYBOARD / PIPE_DYNAMICS / ...       |           |
++-----------+                                                           +-----------+
+
+                           (Assignment 2 - Systematic Debug Output)
++----------------------------------------------------------------------------------+
+| LOGGER MODULE (logger.c / logger.h)                                              |
+| All components write systematic debug output to: logs/simulation.log              |
++----------------------------------------------------------------------------------+
+
+
 ```
 
 
@@ -119,48 +140,57 @@ double y_i_new =
   + (2 * y_i - y_i_minus_1);
 ```
 
-**Force components:**
+Force components:
 - Command forces from keyboard  
 - Repulsive forces from obstacles (Latombe/Khatib model)  
 - Attractive forces from targets  
-- Collision detection & distance accumulation  
-- Boundary constraints (geo-fence)
-
+- Collision detection and distance tracking  
+- Boundary constraints (geo-fencing)
 
 ### Window (`window.c`)
-Ncurses visualization:
+Ncurses-based visualization:
 - Drone position  
-- Obstacles (red)  
-- Targets (green)  
-- Drone (cyan)  
-- Elapsed time  
+- Obstacles and targets  
+- Score and elapsed time  
 - 2D grid map  
 
 ### Keyboard (`keyboard.c`)
-Reads user input (WASD, QEZC, Arrows):
-
+Ncurses-based control interface:
 - Updates `command_force_x` and `command_force_y`  
-- Provides ncurses-based control UI  
+- Provides movement, braking, start, and exit controls  
 
 ### Obstacle Generator (`obstacle.c`)
-- Periodically clears and regenerates obstacles  
-- Ensures obstacles do not overlap with the drone  
+- Periodically regenerates obstacles  
+- Prevents overlap with drone position  
 
 ### Target Generator (`target.c`)
-- Same logic as obstacle generator  
-- Regenerates targets periodically  
+- Similar logic to obstacle generator  
+- Periodic target regeneration  
+
+### Watchdog (`watchdog.c`)
+- Monitors liveness of critical processes  
+- Uses heartbeat messages via named pipes (FIFO)  
+- Terminates the system if a process becomes unresponsive  
+
+### Logger (`logger.c`)
+- Centralized, systematic debug logging  
+- Logs process lifecycle events and errors  
+- Outputs to `logs/simulation.log`  
 
 ### Master (`master.c`)
-- Forks and execs: blackboard, window, dynamics, keyboard, obstacle, target  
-- If any child exits → terminates all children  
-- Provides controlled global shutdown  
+- Creates IPC resources (shared memory, semaphore, pipes)  
+- Forks and execs all simulation components  
+- Terminates all processes if one exits unexpectedly  
+- Performs clean shutdown and IPC cleanup  
 
 ## 5. Build & Run
 
 ### Requirements
 - GCC  
-- ncurses library  
-- POSIX environment (Linux recommended)  
+- POSIX-compatible Linux environment  
+- ncurses  
+- cJSON  
+- pthread  
 
 Install ncurses (Ubuntu/Debian):
 
@@ -173,6 +203,7 @@ sudo apt install libncurses5-dev libncursesw5-dev
 ```
 chmod +x executer.sh
 ./executer.sh
+./master
 ```
 
 This script:
@@ -183,34 +214,47 @@ This script:
 ## 6. Controls
 
 - `W`, `A`, `S`, `D` – Up, Left, Down, Right  
-- `Q`, `E`, `Z`, `C` – Diagonals  
-- `X` – Brake (forces → 0)  
+- `Q`, `E`, `Z`, `C` – Diagonal movement  
+- `X` – Brake (reset forces)  
+- `ESC` – Exit simulation  
+
+---
 
 ## 7. Configuration
 
-Modify `parameters.txt`:
+Simulation parameters are defined in `config.json`, including:
+- Number of obstacles and targets  
+- Physical parameters (mass, damping, repulsion coefficient, radius)
 
-```
-num_obstacles=5
-num_targets=5
-```
+Changes take effect without recompilation.
 
-Blackboard automatically reloads these values.
+---
 
-## 8. Notes
+## 8. Assignment 3 (Partial)
 
-This implementation includes:
-- Multi-process architecture  
-- Blackboard with shared memory  
-- POSIX semaphore synchronization  
-- Ncurses visual/interactive UI  
-- Physics engine with repulsive/attractive fields  
+A partial implementation of Assignment 3 is included:
+- Basic socket-based client/server communication  
+- Exchange of drone position between two simulations  
 
-**Watchdog and logging systems mechanisms are not part of this version.**
+**Assignment 3 is not fully completed and is included for experimental purposes only.**
 
+---
+
+## 9. Notes
+
+This project includes:
+- Multi-process blackboard architecture  
+- POSIX shared memory and semaphores  
+- Ncurses-based UI  
+- Physics-based drone simulation  
+- Watchdog supervision  
+- Systematic debug logging  
+- Clean IPC resource cleanup  
+
+After normal termination, no leftover FIFOs or shared memory objects should remain.
+
+---
 
 ### GitHub Repository
-The complete source code of this project is available at:
+
 https://github.com/mahdibaghban27/blackboard-drone-simulator
-
-
