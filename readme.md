@@ -28,23 +28,30 @@ The system consists of:
 
 ```
 .
-├── executer.sh
+├── bins
+│   ├── Dynamics.out
+│   ├── Keyboard.out
+│   ├── Obstacle.out
+│   ├── Target.out
+│   ├── Watchdog.out
+│   └── Window.out
 ├── config.json
-├── logs/
+├── executer.sh
+├── logs
 │   └── simulation.log
+├── master
 └── src
     ├── blackboard.c
     ├── blackboard.h
     ├── dynamics.c
     ├── keyboard.c
-    ├── window.c
+    ├── logger.c
+    ├── logger.h
+    ├── master.c
     ├── obstacle.c
     ├── target.c
     ├── watchdog.c
-    ├── logger.c
-    ├── logger.h
-    └── master.c
-
+    └── window.c
 ```
 
 ## 3. System Architecture
@@ -258,3 +265,4 @@ After normal termination, no leftover FIFOs or shared memory objects should rema
 ### GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
