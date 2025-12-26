@@ -1,27 +1,26 @@
-# How to Run
+### Requirements
+- GCC  
+- POSIX-compatible Linux environment  
+- ncurses  
+- cJSON  
+- pthread  
 
-## 1. Requirements
-- GCC compiler  
-- ncurses library  
-- POSIX-compliant environment (Linux recommended)
+Install ncurses (Ubuntu/Debian):
 
----
-
-## 2. Install ncurses (Ubuntu/Debian)
-
-```bash
+```
 sudo apt install libncurses5-dev libncursesw5-dev
 ```
 
----
+### Run the simulation
 
-## 3. Run the Simulation
-
-```bash
+```
 chmod +x executer.sh
 ./executer.sh
 ./master
 ```
-
+```
+After the simulation starts, press the **`I`** key to begin the simulation.
+```
 This script compiles all modules and launches the full multi-process simulation.
+
 
