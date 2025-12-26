@@ -115,23 +115,17 @@ The architecture follows the classical **Blackboard Model**:
 
 ### Dynamics (dynamics.c)
 
-This module computes the drone motion using the discrete-time second-order dynamic model defined in the assignment.
+This module computes the drone motion using a discrete-time second-order dynamic model with viscous damping.
 
-**Mathematical update equation (Assignment Eq. 3):**
+**Mathematical update equation:**
 
 $$
-x_i = \frac{F_x \cdot DT^2}{M}
-      - \frac{K}{M} (x_{i-1} - x_{i-2}) \cdot DT
-      + (2x_{i-1} - x_{i-2})
+x_{i+1} = \frac{F_x \cdot DT^2 - M (x_{i-1} - 2x_i) + K \cdot DT \cdot x_i}{M + K \cdot DT}
 $$
 
 $$
-y_i = \frac{F_y \cdot DT^2}{M}
-      - \frac{K}{M} (y_{i-1} - y_{i-2}) \cdot DT
-      + (2y_{i-1} - y_{i-2})
+y_{i+1} = \frac{F_y \cdot DT^2 - M (y_{i-1} - 2y_i) + K \cdot DT \cdot y_i}{M + K \cdot DT}
 $$
-
-
 
 
 **Code implementation:**
@@ -260,6 +254,7 @@ After normal termination, no leftover FIFOs or shared memory objects should rema
 ### GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
