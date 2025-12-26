@@ -121,30 +121,25 @@ This module computes the drone motion using the discrete-time second-order dynam
 
 $$
 x_i = \frac{F_x \, DT^2}{M}
-      - \frac{K}{M}(x_{i-1} - x_{i-2})\,DT
-      + (2x_{i-1} - x_{i-2})
+      - \frac{K}{M}\,(x_{i-1} - x_{i-2})\,DT
+      + \left(2x_{i-1} - x_{i-2}\right)
 $$
 
 and similarly:
 
 $$
 y_i = \frac{F_y \, DT^2}{M}
-      - \frac{K}{M}(y_{i-1} - y_{i-2})\,DT
-      + (2y_{i-1} - y_{i-2})
+      - \frac{K}{M}\,(y_{i-1} - y_{i-2})\,DT
+      + \left(2y_{i-1} - y_{i-2}\right)
 $$
+
 
 **Code implementation:**
 
 ```c
-double x_i_new =
-    (Fx * DT * DT / M)
-  - (K * (x_i - x_i_minus_1) * DT / M)
-  + (2 * x_i - x_i_minus_1);
+x_i_new = (1/(M + K*DT)) * (Fx*DT*DT - M*(x_i_minus_1 - 2*x_i) + K*DT*x_i);
+y_i_new = (1/(M + K*DT)) * (Fy*DT*DT - M*(y_i_minus_1 - 2*y_i) + K*DT*y_i);
 
-double y_i_new =
-    (Fy * DT * DT / M)
-  - (K * (y_i - y_i_minus_1) * DT / M)
-  + (2 * y_i - y_i_minus_1);
 ```
 
 Force components:
@@ -265,4 +260,5 @@ After normal termination, no leftover FIFOs or shared memory objects should rema
 ### GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
