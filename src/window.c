@@ -55,9 +55,12 @@ int main(int argc, char *argv[]) {
     // nodelay(win, TRUE);
     
     time_t now = time(NULL);
+    int lock_size = getenv("BB_LOCK_SIZE") != NULL;
     while (1){  // TODO FIND OUT WHY VISUALIZATION CLEARS WHEN RENDER-GAME
         sem_wait(sem);
-        getmaxyx(stdscr, bb->max_height, bb->max_width);
+        if (!lock_size) {
+            getmaxyx(stdscr, bb->max_height, bb->max_width);
+        }
         if (bb->state == 0){
             render_loading(stdscr);
             werase(win2);
