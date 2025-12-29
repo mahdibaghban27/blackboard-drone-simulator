@@ -41,7 +41,6 @@ The system consists of:
 │   └── simulation.log
 ├── master
 └── src
-    ├── blackboard.c
     ├── blackboard.h
     ├── dynamics.c
     ├── keyboard.c
@@ -105,11 +104,11 @@ The architecture follows the classical **Blackboard Model**:
 
 ## 4. Components
 
-### Blackboard (`blackboard.c`)
-- Creates shared memory and semaphore  
-- Initializes drone state and statistics  
-- Periodically computes score  
-- Reads `parameters.txt` to update counts of obstacles and targets  
+### Blackboard (shared memory struct in blackboard.h, initialized by master.c)
+- Defines the shared state structure (newBlackboard) in blackboard.h
+- master.c creates and initializes POSIX shared memory and semaphore 
+- Other processes attach to the blackboard to read/write their part of the state
+- Reads config.json at runtime to update parameters (including obstacle/target counts)
 
 ### Dynamics (dynamics.c)
 
@@ -222,7 +221,7 @@ This script:
 Simulation parameters are defined in `config.json`, including:
 - Number of obstacles and targets  
 - Physical parameters (mass, damping, repulsion coefficient, radius)
-
+- num_obstacles and num_targets are loaded from config.json and applied at runtime.
 Changes take effect without recompilation.
 
 ---
