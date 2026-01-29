@@ -1,34 +1,4 @@
-[2025-12-25 20:30:00] Blackboard server started. PID: 4100
-[2025-12-25 20:30:07] Dynamics started. PID: 4110
-[2025-12-25 20:30:07] Big brother Watchdog process is watching. PID: 4113
-[2025-12-25 20:30:07] Watchdog received: HBqý from /tmp/blackboard_pipe
-[2025-12-25 20:30:07] Obstacle process started. PID: 4114
-[2025-12-25 20:30:07] Target process started. PID: 4116
-[2025-12-25 20:30:08] Keyboard process started. PID: 4135
-[2025-12-25 20:30:08] Window process started. PID: 4136
-[2025-12-25 20:30:09] Watchdog received: HBqý from /tmp/obstacle_pipe
-[2025-12-25 20:30:09] Watchdog received: HBqý from /tmp/target_pipe
-[2025-12-25 20:30:11] Watchdog received: HBqý from /tmp/dynamics_pipe
-[2025-12-25 20:30:11] Watchdog received: HBqý from /tmp/keyboard_pipe
-[2025-12-25 20:30:11] Watchdog received: HBqý from /tmp/window_pipe
-[2025-12-25 20:30:11] Watchdog received: HBqý from /tmp/obstacle_pipe
-[2025-12-25 20:30:13] Watchdog received: HBqý from /tmp/blackboard_pipe
-[2025-12-25 20:30:13] Watchdog received: HBqý from /tmp/dynamics_pipe
-[2025-12-25 20:30:15] Watchdog received: HBqý from /tmp/keyboard_pipe
-[2025-12-25 20:30:15] Watchdog received: HBqý from /tmp/window_pipe
-[2025-12-25 20:30:15] Watchdog received: HBqý from /tmp/obstacle_pipe
-[2025-12-25 20:30:15] Watchdog received: HBqý from /tmp/target_pipe
-[2025-12-25 20:30:17] Watchdog received: HBqý from /tmp/blackboard_pipe
-[2025-12-25 20:30:17] Watchdog received: HBqý from /tmp/dynamics_pipe
-[2025-12-25 20:30:17] Watchdog received: HBqý from /tmp/keyboard_pipe
-[2025-12-25 20:30:17] Watchdog received: HBqý from /tmp/window_pipe
-[2025-12-25 20:30:19] Watchdog received: HBqý from /tmp/dynamics_pipe
-[2025-12-25 20:30:19] Watchdog received: HBqý from /tmp/obstacle_pipe
-[2025-12-25 20:30:21] Watchdog received: HBqý from /tmp/keyboard_pipe
-[2025-12-25 20:30:21] Watchdog received: HBqý from /tmp/window_pipe
-[2025-12-25 20:30:21] Watchdog received: HBqý from /tmp/target_pipe
-[2025-12-25 20:30:23] Watchdog received: HBqý from /tmp/blackboard_pipe
-[2025-12-25 20:30:23] Watchdog received: HBqý from /tmp/dynamics_pipe
-[2025-12-25 20:30:23] Watchdog received: HBqý from /tmp/keyboard_pipe
-[2025-12-25 20:30:23] Watchdog received: HBqý from /tmp/window_pipe
-[2025-12-25 20:30:23] Watchdog received: HBqý from /tmp/obstacle_pipe
+[2026-01-29 18:09:41] Blackboard server started. PID: 3285
+[2026-01-29 18:09:51] Dynamics started. PID: 3294
+[2026-01-29 18:09:51] Window process started. PID: 3313
+[2026-01-29 18:09:52] Keyboard process started. PID: 3315

@@ -19,7 +19,9 @@ void reset_game(newBlackboard *bb);
 WINDOW* draw_button(WINDOW *parent, int y, int x, const char *label, int width, int height);
 
 int main(int argc, char *argv[]) {
-    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    const char *shm_name = getenv("BB_SHM_NAME");
+    if (!shm_name) shm_name = SHM_NAME;
+    int shm_fd = shm_open(shm_name, O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
         return 1;
@@ -29,7 +31,9 @@ int main(int argc, char *argv[]) {
         perror("mmap failed");
         return 1;
     }
-    sem_t *sem = sem_open(SEM_NAME, 0);
+    const char *sem_name = getenv("BB_SEM_NAME");
+    if (!sem_name) sem_name = SEM_NAME;
+    sem_t *sem = sem_open(sem_name, 0);
     if (sem == SEM_FAILED) {
         perror("sem_open failed");
         return 1;
@@ -116,7 +120,7 @@ int main(int argc, char *argv[]) {
         }
         // refresh();
     }
-    
+
     if (fd >= 0) { close(fd); }
     delwin(win);
     endwin();
@@ -174,3 +178,4 @@ void reset_game(newBlackboard *bb) {
         bb->target_xs[i] = -1; bb->target_ys[i] = -1;
     }
 }
+

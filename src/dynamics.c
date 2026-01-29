@@ -19,7 +19,9 @@ void compute_attractive_force(double *Fx, double *Fy, newBlackboard *bb);
 
 
 int main() {
-    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    const char *shm_name = getenv("BB_SHM_NAME");
+    if (!shm_name) shm_name = SHM_NAME;
+    int shm_fd = shm_open(shm_name, O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
         return 1;
@@ -29,7 +31,9 @@ int main() {
         perror("mmap failed");
         return 1;
     }
-    sem_t *sem = sem_open(SEM_NAME, 0);
+    const char *sem_name = getenv("BB_SEM_NAME");
+    if (!sem_name) sem_name = SEM_NAME;
+    sem_t *sem = sem_open(sem_name, 0);
     if (sem == SEM_FAILED) {
         perror("sem_open failed");
         return 1;
@@ -66,10 +70,30 @@ int main() {
         y_i_minus_1 = y_i;
         y_i = y_i_new;
 
-        if (bb->drone_x < 1) { bb->drone_x = 1; vx = 0; Fx = 0;}
-        if (bb->drone_x > bb->max_width-1) { bb->drone_x = bb->max_width-2; vx = 0; Fx = 0;}
-        if (bb->drone_y < 1) { bb->drone_y = 1; vy = 0; Fy = 0;} 
-        if (bb->drone_y > bb->max_height-1) { bb->drone_y = bb->max_height-2; vy = 0; Fy = 0;}
+        if (bb->drone_x < 1) {
+            bb->drone_x = 1;
+            x_i = bb->drone_x;
+            x_i_minus_1 = bb->drone_x;
+            vx = 0; Fx = 0;
+        }
+        if (bb->drone_x > bb->max_width-1) {
+            bb->drone_x = bb->max_width-2;
+            x_i = bb->drone_x;
+            x_i_minus_1 = bb->drone_x;
+            vx = 0; Fx = 0;
+        }
+        if (bb->drone_y < 1) {
+            bb->drone_y = 1;
+            y_i = bb->drone_y;
+            y_i_minus_1 = bb->drone_y;
+            vy = 0; Fy = 0;
+        }
+        if (bb->drone_y > bb->max_height-1) {
+            bb->drone_y = bb->max_height-2;
+            y_i = bb->drone_y;
+            y_i_minus_1 = bb->drone_y;
+            vy = 0; Fy = 0;
+        }
 
         for (int i=0; i<bb->n_obstacles; i++){ // TODO MAYBE MERGE WITH OTHER LOOPS
             if (bb->drone_x == bb->obstacle_xs[i] && bb->drone_y == bb->obstacle_ys[i]){
@@ -77,7 +101,7 @@ int main() {
                 bb->obstacle_xs[i] = -1;
                 bb->obstacle_ys[i] = -1;
                 logger("Drone hit an obstacle at position (%d, %d)", bb->drone_x, bb->drone_y);
-            } 
+            }
         }
         for (int i=0; i<bb->n_targets; i++){
             if (bb->drone_x == bb->target_xs[i] && bb->drone_y == bb->target_ys[i]){
@@ -165,3 +189,4 @@ void compute_attractive_force(double *Fx, double *Fy, newBlackboard *bb) {
         }
     }
 }
+

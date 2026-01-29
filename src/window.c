@@ -19,6 +19,10 @@ void render_loading(WINDOW *win);
 void render_game(WINDOW *win, newBlackboard *bb);
 void render_visualization(WINDOW * win, newBlackboard * bb);
 
+/* Draw a border around the actual simulation world (bb->max_width x bb->max_height),
+   so it's visually clear where the drone is allowed to move. */
+void draw_world_border(WINDOW *win, int top, int left, int h, int w);
+
 int main(int argc, char *argv[]) {
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
@@ -108,7 +112,18 @@ void render_loading(WINDOW *win){
 
 void render_game(WINDOW * win, newBlackboard *bb){
     werase(win);
-    wborder(win, 0, 0, 0, 0, 0, 0, 0, 0);
+
+    /* This border is for the simulation world (grid), not for the whole terminal window.
+       It makes the "play area" obvious even if the terminal is larger than the world. */
+    int top = 0;
+    int left = 0;
+    int world_h = bb->max_height;
+    int world_w = bb->max_width;
+
+    if (world_h >= 2 && world_w >= 2) {
+        draw_world_border(win, top, left, world_h, world_w);
+    }
+
     for (int i = 0; i < bb->n_obstacles; i++){
         if (bb->obstacle_xs[i] < 1 || bb->obstacle_ys[i] < 1){
             continue;                                                                       // wont break bc if drone hits one, that index becomes -1
@@ -141,3 +156,30 @@ void render_visualization(WINDOW * win, newBlackboard * bb){
     mvwaddch(win, bb->drone_y, bb->drone_x, ','|COLOR_PAIR(4));
     wrefresh(win);
 }
+
+void draw_world_border(WINDOW *win, int top, int left, int h, int w) {
+    /* Border covers the rectangle:
+       (top,left) ... (top+h-1, left+w-1)
+       This matches the world coordinates if you treat them as 0..w-1 / 0..h-1.
+       Your objects already avoid <1 and >=max, so the border stays clean. */
+    int y0 = top;
+    int x0 = left;
+    int y1 = top + h - 1;
+    int x1 = left + w - 1;
+
+    mvwaddch(win, y0, x0, ACS_ULCORNER);
+    mvwaddch(win, y0, x1, ACS_URCORNER);
+    mvwaddch(win, y1, x0, ACS_LLCORNER);
+    mvwaddch(win, y1, x1, ACS_LRCORNER);
+
+    for (int x = x0 + 1; x < x1; x++) {
+        mvwaddch(win, y0, x, ACS_HLINE);
+        mvwaddch(win, y1, x, ACS_HLINE);
+    }
+
+    for (int y = y0 + 1; y < y1; y++) {
+        mvwaddch(win, y, x0, ACS_VLINE);
+        mvwaddch(win, y, x1, ACS_VLINE);
+    }
+}
+
