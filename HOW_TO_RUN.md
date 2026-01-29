@@ -62,9 +62,12 @@ After compilation:
 ### On **Server** machine
 
 1. Run:
-   ```bash
-   ./master
-   ```
+
+```bash
+chmod +x executer.sh
+./executer.sh
+./master
+```
 2. Select mode **2**
 3. Select role **1 (server)**
 4. Enter a port (e.g. `6000`)
@@ -72,10 +75,14 @@ After compilation:
 ### On **Client** machine
 
 1. Run:
-   ```bash
-   ./master
-   ```
+
+```bash
+chmod +x executer.sh
+./executer.sh
+./master
+```
 2. Select mode **2**
 3. Select role **2 (client)**
 4. Enter the server IP (e.g. `192.168.1.10`)
 5. Enter the same port (e.g. `6000`)
+
