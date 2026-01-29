@@ -230,6 +230,73 @@ Changes take effect without recompilation.
 
 In Assignment 3, the simulator can run in a **networked mode** where two independent simulations exchange state over **TCP** using a simple **line-based protocol with acknowledgements (ACK)**.
 
+### System Structure (Assignment 3) — Server & Client
+Server Host (Role = Server)
+```
+                    +----------------------+
+                    |   Master (Server)    |
+                    | spawns Window/Kbd/Dyn|
+                    | + owns net thread    |
+                    +----------+-----------+
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+          v                    v                    v
+     +---------+          +----------+          +----------+
+     | Window  |          | Keyboard |          | Dynamics |
+     | ncurses |          | ncurses  |          | physics  |
+     +----+----+          +----+-----+          +----+-----+
+          \                   |                    /
+           \                  |                   /
+            v                 v                  v
+  +--------------------------------------------------------+
+  |     LOCAL IPC: POSIX SHM (newBlackboard) + SEM_NAME     |
+  |   Server fixes world size (W,H) and exports via socket  |
+  +--------------------------------------------------------+
+
+                 Network thread inside Master
+  +--------------------------------------------------------+
+  | TCP listen/accept                                      |
+  | Handshake: ok -> ook -> size W H -> sok                |
+  | Loop: send "drone"+pos ; recv "obst"+pos ; quit "q"    |
+  +--------------------------------------------------------+
+
+```
+Client Host (Role = Client)
+```
+                    +----------------------+
+                    |   Master (Client)    |
+                    | spawns Window/Kbd/Dyn|
+                    | + owns net thread    |
+                    +----------+-----------+
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+          v                    v                    v
+     +---------+          +----------+          +----------+
+     | Window  |          | Keyboard |          | Dynamics |
+     | ncurses |          | ncurses  |          | physics  |
+     +----+----+          +----+-----+          +----+-----+
+          \                   |                    /
+           \                  |                   /
+            v                 v                  v
+  +--------------------------------------------------------+
+  |     LOCAL IPC: POSIX SHM (newBlackboard) + SEM_NAME     |
+  | Client receives size (W,H) from server and applies it   |
+  +--------------------------------------------------------+
+
+                 Network thread inside Master
+  +--------------------------------------------------------+
+  | TCP connect(server_ip, port)                           |
+  | Handshake: recv ok -> send ook -> recv size W H -> sok  |
+  | Loop: recv "drone"+pos -> bb->remote_drone_*            |
+  |       recv "obst" -> send own pos                       |
+  | Disconnect: socket close => bb->state=2 => exit         |
+  +--------------------------------------------------------+
+
+```
+
+
 ### 8.1 Modes of Operation
 
 At startup, `master` asks for the operating mode:
@@ -440,6 +507,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
