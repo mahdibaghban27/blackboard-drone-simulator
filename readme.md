@@ -405,7 +405,22 @@ This project includes:
 - Physics-based drone simulation  
 - Watchdog supervision  
 - Systematic debug logging  
-- Clean IPC resource cleanup  
+- Clean IPC resource cleanup
+
+- The project supports two operation modes:
+  - **Local mode (Assignment 2):** full system with Watchdog + Obstacle/Target generators.
+  - **Network mode (Assignment 3):** runs only `Window`, `Dynamics`, `Keyboard` and enables networking.
+- **Assignment 3 uses TCP socket-based client/server communication**:
+  - Server: `bind()` → `listen()` → `accept()`
+  - Client: `connect()`
+  - Messages are **line-based** (`\n`) with explicit **ACK** replies to keep both peers synchronized.
+- A **world size handshake** is performed in network mode (`size W H`) so both peers use identical dimensions.
+  In network mode, Window size is **locked** using `BB_LOCK_SIZE=1` to avoid overwriting the negotiated size.
+- Exchanged drone positions use a **virtual coordinate system** (bottom-left origin) to avoid coordinate mismatches across machines/terminals.
+- The remote peer drone is visualized in the Window as **`X`** (local drone is **`D`**).
+- On the server side, the client drone is injected as a **dynamic obstacle** (`obstacle[0]`) to enable repulsion-based interaction.
+- `Window` and `Keyboard` are launched in **separate terminal windows** (konsole/gnome-terminal/xterm fallback) because both are full-screen ncurses applications.
+- If the TCP connection drops (`net_lost`) or a quit is requested, the simulation terminates cleanly and performs IPC/socket cleanup.
 
 After normal termination, no leftover FIFOs or shared memory objects should remain.
 
@@ -436,6 +451,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
