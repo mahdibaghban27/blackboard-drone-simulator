@@ -367,13 +367,27 @@ sudo apt update && sudo apt install -y \
 ```
 
 #### On Server machine
-1. Run `./master`
+1. Run 
+
+```bash
+chmod +x executer.sh
+./executer.sh
+./master
+```
+
 2. Select mode **2**
 3. Select role **1 (server)**
 4. Enter a port (e.g. `6000`)
 
 #### On Client machine
-1. Run `./master`
+1. Run 
+
+```bash
+chmod +x executer.sh
+./executer.sh
+./master
+```
+
 2. Select mode **2**
 3. Select role **2 (client)**
 4. Enter the server IP (e.g. `192.168.1.10`)
@@ -422,6 +436,7 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
 
 
 
