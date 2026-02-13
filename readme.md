@@ -440,13 +440,6 @@ Based on the feedback from Assignment 1, the following significant issues were c
 ## GitHub Repository
 https://github.com/mahdibaghban27/blackboard-drone-simulator
 
-## GitHub Repository
-
-https://github.com/mahdibaghban27/blackboard-drone-simulator
-
-
-
-
 
 
 
