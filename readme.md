@@ -499,5 +499,37 @@ Based on the feedback from Assignment 1, the following significant issues were c
 
 **Result:** A single consistent log file (`logs/simulation.log`) allows reproducible debugging and clearer evaluation.
 
+
 ## GitHub Repository
 https://github.com/mahdibaghban27/blackboard-drone-simulator
+
+
+
+
+## Project Contributors
+This project was developed by:
+
+Author :
+- Mahdi Baghban Ghalehchi
+- S6741099
+
+Teammate:
+- Mihret Kochito Wolde
+- S7229950
+
+The date of the test:
+16/2/2026
+
+Course: ARP – A.Y 2025-2026 
+
+
+
+
+
+
+
+
+
+
+
+
