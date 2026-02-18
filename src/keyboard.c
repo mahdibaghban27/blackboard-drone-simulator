@@ -44,12 +44,35 @@ int main(int argc, char *argv[]) {
     int Fx = 0, Fy = 0;
 
     initscr();
-    cbreak();  
-    noecho();   
-    keypad(stdscr, TRUE); 
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
     curs_set(0);
 
-    WINDOW *win = newwin(25, 60, 1, 1);
+    // The keyboard UI has a fixed layout. If the terminal is too small, don't just
+    // crash (newwin() can return NULL). We'll simply ask the user to resize.
+    const int want_h = 25;
+    const int want_w = 60;
+    while (1) {
+        int cur_h, cur_w;
+        getmaxyx(stdscr, cur_h, cur_w);
+        if (cur_h >= want_h + 2 && cur_w >= want_w + 2) break;
+
+        werase(stdscr);
+        box(stdscr, 0, 0);
+        mvwprintw(stdscr, 1, 2, "Keyboard window needs a bit more space");
+        mvwprintw(stdscr, 3, 2, "Need: %dx%d   Current: %dx%d", want_w + 2, want_h + 2, cur_w, cur_h);
+        mvwprintw(stdscr, 5, 2, "یه کم پنجره رو بزرگ کن تا دکمه‌ها درست دیده بشن...");
+        wrefresh(stdscr);
+        usleep(200000);
+    }
+
+    WINDOW *win = newwin(want_h, want_w, 1, 1);
+    if (!win) {
+        endwin();
+        fprintf(stderr, "[Keyboard] newwin() failed\n");
+        return 1;
+    }
     WINDOW *subwindows[13] = {0};
     nodelay(win, 1); nodelay(stdscr, 1);
     box(win, 0, 0);

@@ -28,8 +28,6 @@ pthread_mutex_t logger_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MAX_MSG_LENGTH 256
 
 // SIMULATION HYPERPARAMETERS
-#define WIN_SIZE_X 200      // max width for 1080p
-#define WIN_SIZE_Y 50       // max height for 1080p
 #define RENDER_DELAY 100000 // microseconds
 #define RETRY_DELAY 50000   // for opening pipes
 #define MAX_RETRIES 20      // for opening pipes
@@ -42,6 +40,15 @@ pthread_mutex_t logger_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define OBSTACLE_GENERATION_DELAY   4  // generate obstacles every 4 seconds
 #define TARGET_GENERATION_DELAY     6  // generate targets every 6 seconds
 #define WATCHDOG_HEARTBEAT_DELAY    2  // check heartbeat every 1 second
+
+// ---- UI layout (pdf: full screen + small lateral inspection window) ----
+// The right panel is "just for info"; the playable world stays on the left.
+// If the terminal is too small, we silently collapse the panel.
+#define INSPECTION_WIDTH 30
+
+// Assignment 3 (pdf): coordinates are exchanged in a virtual system.
+// Most groups use the 100m geo-fence as reference, so we map our grid -> [0..100].
+#define VIRTUAL_WORLD_SIZE 100.0
 
 
 // SHARED STRUCTURES and DATA STRUCTURES (with proper order w.r.t padding and memory alignment)
@@ -78,7 +85,29 @@ typedef struct {
     int obstacle_ys[MAX_OBJECTS];
     int target_xs[MAX_OBJECTS];
     int target_ys[MAX_OBJECTS];
+
+    // Tiny bits of extra state so assignment-3 can coordinate window sizing.
+    int win_ready;       // Window has published a sane max_width/max_height
+    int net_lock_size;   // After handshake, freeze max_* even if terminal is resized
 } newBlackboard;
+
+static inline int bb_inspection_width(const newBlackboard *bb) {
+    // Keep it reasonable on small terminals.
+    if (bb->max_width < INSPECTION_WIDTH + 20) return 0;
+    return INSPECTION_WIDTH;
+}
+
+// We store the full window size into bb->max_*; the playable area is the left part.
+static inline int bb_play_width(const newBlackboard *bb) {
+    int insp = bb_inspection_width(bb);
+    int play = bb->max_width - insp;
+    if (play < 10) play = bb->max_width;
+    return play;
+}
+
+static inline int bb_play_height(const newBlackboard *bb) {
+    return bb->max_height;
+}
 
 
 // COMMON FUNCTIONS

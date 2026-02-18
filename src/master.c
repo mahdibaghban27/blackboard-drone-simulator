@@ -30,6 +30,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <pthread.h>
+#include <math.h>
 
 
 void summon(char *args[]);
@@ -59,14 +60,10 @@ typedef struct {
 static void *network_thread(void *arg);
 static int send_line(int sock, const char *line);
 static int recv_line(int sock, char *buf, size_t buflen);
-static void to_virtual_coords(int width, int height, int x, int y, int *vx, int *vy);
-static void from_virtual_coords(int width, int height, int vx, int vy, int *x, int *y);
+static void local_to_virtual(const newBlackboard *bb, int x, int y, double *vx, double *vy);
+static void virtual_to_local(const newBlackboard *bb, double vx, double vy, int *x, int *y);
 
 static volatile sig_atomic_t terminated = 0;
-
-/* Server-only: keep the simulation "world size" stable and predictable. */
-#define SERVER_STD_WIDTH  80
-#define SERVER_STD_HEIGHT 30
 
 /* Small flag: once handshake finishes, client has the right size in bb->max_* */
 static volatile sig_atomic_t net_size_ready = 0;
@@ -127,7 +124,11 @@ int main() {
         bb->target_xs[i] = -1; bb->target_ys[i] = -1;
     }
     bb->command_force_x = 0; bb->command_force_y = 0;
-    bb->max_width   = 20; bb->max_height  = 20; // changes during runtime
+    bb->max_width   = 20; bb->max_height  = 20; // Window process overwrites these (server) / handshake overwrites (client)
+    bb->win_ready = 0;
+    bb->net_lock_size = 0;
+    bb->win_ready = 0;
+    bb->net_lock_size = 0;
     bb->stats.hit_obstacles = 0; bb->stats.hit_targets = 0;
     bb->stats.time_elapsed = 0.0; bb->stats.distance_traveled = 0.0;
 
@@ -186,22 +187,16 @@ int main() {
         net_args.bb = bb;
         net_args.sem = sem;
 
-        /* In network mode we want both sides to start from a sane standard size.
-           Client will still accept the "size w h" from the server during handshake. */
-        sem_wait(sem);
-        bb->max_width  = SERVER_STD_WIDTH;
-        bb->max_height = SERVER_STD_HEIGHT;
-        sem_post(sem);
-
         if (pthread_create(&net_th, NULL, network_thread, &net_args) != 0) {
             perror("pthread_create(network_thread)");
             // Continue without networking rather than aborting.
         }
 
-        /* On client, wait until the handshake writes the final size into bb->max_*,
-           so Window does not render with a stale/placeholder size at startup. */
+        /* On client, we *try* to wait for the server "size" message before
+           bringing up ncurses (pdf). If something goes sideways, we don't want
+           to dead-wait forever, so we keep it bounded. */
         if (!net_args.is_server) {
-            for (int i = 0; i < 200 && !net_size_ready; i++) {
+            for (int i = 0; i < 1200 && !net_size_ready; i++) { // ~12s max
                 usleep(10000);
             }
         }
@@ -221,27 +216,35 @@ int main() {
             // Window and Keyboard must run in their own terminals (each is an ncurses full-screen app).
             if (strcmp(processNames[i], "Window") == 0 || strcmp(processNames[i], "Keyboard") == 0) {
 
-                /* In network mode, Window.c should not overwrite bb->max_* from terminal size. */
-                if (mode == 2 && strcmp(processNames[i], "Window") == 0) {
+                /* In network mode the client must mirror server size (pdf).
+                   So we lock only on the client side; server can grab its own terminal size first. */
+                if (mode == 2 && strcmp(processNames[i], "Window") == 0 && !net_args.is_server) {
                     setenv("BB_LOCK_SIZE", "1", 1);
                 }
 
                 const char *bin = (strcmp(processNames[i], "Window") == 0) ? "./bins/Window.out" : "./bins/Keyboard.out";
 
-                if (mode == 2 && strcmp(processNames[i], "Window") == 0 && command_exists("xterm")) {
-                    /* Simple: give Window a terminal big enough so the whole border is visible. */
-                    char geom[32];
-                    snprintf(geom, sizeof(geom), "%dx%d", SERVER_STD_WIDTH + 5, SERVER_STD_HEIGHT + 5);
-                    char *execArgs[] = {"xterm", "-geometry", geom, "-e", (char*)bin, NULL};
-                    summon(execArgs);
-                } else if (command_exists("konsole")) {
+                 /* We previously tried to force the terminal geometry from code.
+                    On some setups gnome-terminal/Wayland gets grumpy about geometry
+                    flags and the spawned terminal exits immediately (then master kills
+                    the rest). The pdf requirement is about *window logic*, not about
+                    forcing the emulator, so we keep this simple and let the user resize.
+                    (Window will still *render* using the server-provided size.) */
+
+
+                if (command_exists("konsole")) {
                     char *execArgs[] = {"konsole", "-e", (char*)bin, NULL};
                     summon(execArgs);
                 } else if (command_exists("gnome-terminal")) {
                     // Keep terminal open so errors are visible.
                     char cmd[256];
                     snprintf(cmd, sizeof(cmd), "%s; exec bash", bin);
-                    char *execArgs[] = {"gnome-terminal", "--", "bash", "-lc", cmd, NULL};
+
+                    /* Important: without --wait, gnome-terminal often daemonizes and the
+                       launcher process exits immediately. master treats that as a crash
+                       and kills the whole simulation (this happens a lot in client mode).
+                       --wait keeps the launcher alive until the command finishes. */
+                    char *execArgs[] = {"gnome-terminal", "--wait", "--", "bash", "-lc", cmd, NULL};
                     summon(execArgs);
                 } else if (command_exists("xterm")) {
                     char *execArgs[] = {"xterm", "-e", (char*)bin, NULL};
@@ -284,13 +287,6 @@ int main() {
         }
 
         sem_wait(sem);
-
-        /* Server-only: keep dimensions stable in shared memory.
-           (Just in case another node tries to rewrite them.) */
-        if (mode == 2 && net_args.is_server) {
-            bb->max_width  = SERVER_STD_WIDTH;
-            bb->max_height = SERVER_STD_HEIGHT;
-        }
 
         bb->score = calculate_score(bb);
         read_json(bb, true);
@@ -337,8 +333,16 @@ int main() {
 // ---------------- Assignment 3 (socket protocol) ----------------
 
 static int send_line(int sock, const char *line) {
+    // Protocol is line-based: message + '\n'
+    char tmp[1024];
     size_t len = strlen(line);
-    const char *p = line;
+    if (len + 1 >= sizeof(tmp)) return -1;
+    memcpy(tmp, line, len);
+    tmp[len] = '\n';
+    tmp[len + 1] = '\0';
+
+    const char *p = tmp;
+    len = len + 1;
     while (len > 0) {
         ssize_t n = send(sock, p, len, 0);
         if (n < 0) {
@@ -372,16 +376,47 @@ static int recv_line(int sock, char *buf, size_t buflen) {
     return 1;
 }
 
-static void to_virtual_coords(int width, int height, int x, int y, int *vx, int *vy) {
-    // Virtual system origin is bottom-left.
-    *vx = x;
-    *vy = (height - 1) - y;
+static double clampd(double v, double lo, double hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
 }
 
-static void from_virtual_coords(int width, int height, int vx, int vy, int *x, int *y) {
-    (void)width;
-    *x = vx;
-    *y = (height - 1) - vy;
+static void local_to_virtual(const newBlackboard *bb, int x, int y, double *vx, double *vy) {
+    // Our internal coords are terminal-grid based (origin top-left).
+    // For network exchange we map them to the [0..100] virtual world with origin bottom-left.
+    int play_w = bb_play_width(bb);
+    int play_h = bb_play_height(bb);
+    int x0 = 1, x1 = play_w - 2;
+    int y0 = 1, y1 = play_h - 2;
+
+    double nx = (x1 > x0) ? ((double)(x - x0) / (double)(x1 - x0)) : 0.0;
+    double ny = (y1 > y0) ? ((double)(y1 - y) / (double)(y1 - y0)) : 0.0;
+    nx = clampd(nx, 0.0, 1.0);
+    ny = clampd(ny, 0.0, 1.0);
+
+    *vx = nx * VIRTUAL_WORLD_SIZE;
+    *vy = ny * VIRTUAL_WORLD_SIZE;
+}
+
+static void virtual_to_local(const newBlackboard *bb, double vx, double vy, int *x, int *y) {
+    int play_w = bb_play_width(bb);
+    int play_h = bb_play_height(bb);
+    int x0 = 1, x1 = play_w - 2;
+    int y0 = 1, y1 = play_h - 2;
+
+    double nx = clampd(vx / VIRTUAL_WORLD_SIZE, 0.0, 1.0);
+    double ny = clampd(vy / VIRTUAL_WORLD_SIZE, 0.0, 1.0);
+
+    int lx = (x1 > x0) ? (x0 + (int)lround(nx * (double)(x1 - x0))) : x0;
+    int ly = (y1 > y0) ? (y1 - (int)lround(ny * (double)(y1 - y0))) : y0;
+
+    // Just in case rounding goes funky.
+    if (lx < x0) lx = x0; if (lx > x1) lx = x1;
+    if (ly < y0) ly = y0; if (ly > y1) ly = y1;
+
+    *x = lx;
+    *y = ly;
 }
 
 static void *network_thread(void *arg) {
@@ -429,32 +464,54 @@ static void *network_thread(void *arg) {
 
     char buf[256];
 
-    // Handshake
+    // Handshake (pdf page 8)
     if (na->is_server) {
-        if (send_line(sock, "ok\n") < 0) goto lost;
+        if (send_line(sock, "ok") < 0) goto lost;
         if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost;
-        // Send size (in characters)
-        int w, h;
-        sem_wait(na->sem);
-        w = na->bb->max_width;
-        h = na->bb->max_height;
-        sem_post(na->sem);
-        snprintf(buf, sizeof(buf), "size %d %d\n", w, h);
+        if (strcmp(buf, "ook") != 0) goto lost;
+
+        // Wait until Window publishes a real terminal size, then send it.
+        int w = 0, h = 0;
+        for (int i = 0; i < 3000; i++) { // give the Window a bit of time to boot (~30s)
+            sem_wait(na->sem);
+            int ready = na->bb->win_ready;
+            w = na->bb->max_width;
+            h = na->bb->max_height;
+            sem_post(na->sem);
+            if (ready && w > 0 && h > 0) break;
+            usleep(10000);
+        }
+
+        snprintf(buf, sizeof(buf), "size %d %d", w, h);
         if (send_line(sock, buf) < 0) goto lost;
-        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // sok
+        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost;
+        if (strcmp(buf, "sok") != 0) goto lost;
+
+        sem_wait(na->sem);
+        na->bb->net_lock_size = 1;
+        sem_post(na->sem);
+
         net_size_ready = 1;
     } else {
-        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // ok
-        if (send_line(sock, "ook\n") < 0) goto lost;
-        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // size w h
+        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost;
+        if (strcmp(buf, "ok") != 0) goto lost;
+        if (send_line(sock, "ook") < 0) goto lost;
+
+        if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost;
         int w = 0, h = 0;
-        if (sscanf(buf, "size %d %d", &w, &h) == 2) {
-            sem_wait(na->sem);
-            na->bb->max_width = w;
-            na->bb->max_height = h;
-            sem_post(na->sem);
-        }
-        if (send_line(sock, "sok\n") < 0) goto lost;
+        int parsed = 0;
+        if (!parsed && sscanf(buf, "size %d %d", &w, &h) == 2) parsed = 1;
+        if (!parsed && sscanf(buf, "size %d, %d", &w, &h) == 2) parsed = 1;
+        if (!parsed && sscanf(buf, "size %d,%d", &w, &h) == 2) parsed = 1;
+        if (!parsed) goto lost;
+
+        sem_wait(na->sem);
+        na->bb->max_width = w;
+        na->bb->max_height = h;
+        na->bb->net_lock_size = 1;
+        sem_post(na->sem);
+
+        if (send_line(sock, "sok") < 0) goto lost;
         net_size_ready = 1;
     }
 
@@ -464,78 +521,86 @@ static void *network_thread(void *arg) {
             // Quit?
             sem_wait(na->sem);
             int st = na->bb->state;
-            int w = na->bb->max_width;
-            int h = na->bb->max_height;
             int x = na->bb->drone_x;
             int y = na->bb->drone_y;
             sem_post(na->sem);
 
             if (st == 2) {
-                if (send_line(sock, "q\n") < 0) goto lost;
+                if (send_line(sock, "q") < 0) goto lost;
                 if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // qok
+                if (strcmp(buf, "qok") != 0) goto lost;
                 break;
             }
 
             // Send drone position
-            if (send_line(sock, "drone\n") < 0) goto lost;
-            int vx, vy;
-            to_virtual_coords(w, h, x, y, &vx, &vy);
-            snprintf(buf, sizeof(buf), "%d %d\n", vx, vy);
+            if (send_line(sock, "drone") < 0) goto lost;
+            double vx, vy;
+            sem_wait(na->sem);
+            local_to_virtual(na->bb, x, y, &vx, &vy);
+            sem_post(na->sem);
+            snprintf(buf, sizeof(buf), "%.6f %.6f", vx, vy);
             if (send_line(sock, buf) < 0) goto lost;
             if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // dok
+            if (strcmp(buf, "dok") != 0) goto lost;
 
             // Receive obstacle (client's drone)
-            if (send_line(sock, "obst\n") < 0) goto lost;
+            if (send_line(sock, "obst") < 0) goto lost;
             if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // x y
-            int ovx, ovy;
-            if (sscanf(buf, "%d %d", &ovx, &ovy) == 2) {
+            double ovx, ovy;
+            if (sscanf(buf, "%lf %lf", &ovx, &ovy) == 2) {
                 int ox, oy;
-                from_virtual_coords(w, h, ovx, ovy, &ox, &oy);
                 sem_wait(na->sem);
+                virtual_to_local(na->bb, ovx, ovy, &ox, &oy);
+                // single obstacle comes from client
+                for (int i = 0; i < MAX_OBJECTS; i++) {
+                    na->bb->obstacle_xs[i] = -1;
+                    na->bb->obstacle_ys[i] = -1;
+                }
                 na->bb->obstacle_xs[0] = ox;
                 na->bb->obstacle_ys[0] = oy;
                 na->bb->n_obstacles = 1;
                 sem_post(na->sem);
             }
-            if (send_line(sock, "pok\n") < 0) goto lost;
+            if (send_line(sock, "pok") < 0) goto lost;
         } else {
             int r = recv_line(sock, buf, sizeof(buf));
             if (r <= 0) goto lost;
 
             if (strcmp(buf, "q") == 0) {
-                if (send_line(sock, "qok\n") < 0) goto lost;
+                if (send_line(sock, "qok") < 0) goto lost;
+                // Client must stop when server closes.
+                sem_wait(na->sem);
+                na->bb->state = 2;
+                sem_post(na->sem);
+                net_lost = 1;
                 break;
             }
 
             if (strcmp(buf, "drone") == 0) {
                 if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // x y
-                int vx, vy;
-                if (sscanf(buf, "%d %d", &vx, &vy) == 2) {
-                    int w, h;
-                    sem_wait(na->sem);
-                    w = na->bb->max_width;
-                    h = na->bb->max_height;
+                double vx, vy;
+                if (sscanf(buf, "%lf %lf", &vx, &vy) == 2) {
                     int x, y;
-                    from_virtual_coords(w, h, vx, vy, &x, &y);
+                    sem_wait(na->sem);
+                    virtual_to_local(na->bb, vx, vy, &x, &y);
                     na->bb->remote_drone_x = x;
                     na->bb->remote_drone_y = y;
                     sem_post(na->sem);
                 }
-                if (send_line(sock, "dok\n") < 0) goto lost;
+                if (send_line(sock, "dok") < 0) goto lost;
             } else if (strcmp(buf, "obst") == 0) {
                 // Send our drone position as obstacle
-                int w, h, x, y;
+                int x, y;
+                double vx, vy;
                 sem_wait(na->sem);
-                w = na->bb->max_width;
-                h = na->bb->max_height;
                 x = na->bb->drone_x;
                 y = na->bb->drone_y;
+                local_to_virtual(na->bb, x, y, &vx, &vy);
                 sem_post(na->sem);
-                int vx, vy;
-                to_virtual_coords(w, h, x, y, &vx, &vy);
-                snprintf(buf, sizeof(buf), "%d %d\n", vx, vy);
+                snprintf(buf, sizeof(buf), "%.6f %.6f", vx, vy);
                 if (send_line(sock, buf) < 0) goto lost;
                 if (recv_line(sock, buf, sizeof(buf)) <= 0) goto lost; // pok
+                if (strcmp(buf, "pok") != 0) goto lost;
             }
         }
 
@@ -662,4 +727,3 @@ void handle_sigchld(int sig) {
 void handle_sigint(int sig) {
     quit_requested = 1;
 }
-

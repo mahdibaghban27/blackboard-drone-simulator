@@ -38,11 +38,16 @@ int main() {
             bb->obstacle_ys[i] = -1;
         }
         for (int i=0; i<bb->n_obstacles; i++){ 
-            gen_x = rand() % (bb->max_width-1);
-            gen_y = rand() % (bb->max_height-1);
+            int play_w = bb_play_width(bb);
+            int play_h = bb_play_height(bb);
+            int max_x = (play_w > 3) ? (play_w - 2) : 1;
+            int max_y = (play_h > 3) ? (play_h - 2) : 1;
+
+            gen_x = (max_x > 1) ? (rand() % max_x + 1) : 1;
+            gen_y = (max_y > 1) ? (rand() % max_y + 1) : 1;
             while (gen_x == bb->drone_x && gen_y == bb->drone_y){
-                gen_x = rand() % (bb->max_width-1);
-                gen_y = rand() % (bb->max_height-1);
+                gen_x = (max_x > 1) ? (rand() % max_x + 1) : 1;
+                gen_y = (max_y > 1) ? (rand() % max_y + 1) : 1;
             }
             bb->obstacle_xs[i] = gen_x;
             bb->obstacle_ys[i] = gen_y;

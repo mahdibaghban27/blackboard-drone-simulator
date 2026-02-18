@@ -236,7 +236,50 @@ Changes take effect without recompilation.
 
 ## 8. Assignment 3 – Networked Simulation (Client/Server)
 
-In Assignment 3, the simulator can run in a **networked mode** where two independent simulations exchange state over **TCP** using a simple **line-based protocol with acknowledgements (ACK)**.
+In **Assignment 3**, the simulator can run in a **networked mode** where two independent instances (running on two machines or two terminals) exchange state over **TCP** using a simple **line-based protocol with ACKs**.
+
+In this implementation:
+- The networking logic lives in **`master.c`** as a dedicated **pthread** (`network_thread`).
+- The thread bridges socket data into the shared **blackboard** (`newBlackboard`) under semaphore protection.
+- In network mode, only **Window / Keyboard / Dynamics** are launched (Obstacle/Target/Watchdog are disabled per spec).
+
+---
+
+### 8.0 System Structure (Assignment 3)
+
+Two copies of the same program run on the network, one as **Server**, the other as **Client**.
+
+```
+   SERVER HOST                                                     CLIENT HOST
++---------------------+                                       +---------------------+
+|  Master (server)    |                                       |  Master (client)    |
+|  - creates SHM/SEM  |                                       |  - creates SHM/SEM  |
+|  - forks children   |                                       |  - forks children   |
+|  - network_thread   |                                       |  - network_thread   |
++----+-----------+-----+                                       +----+-----------+----+
+     |           |                                                  |           |
+     |           |                                                  |           |
+     v           v                                                  v           v
++---------+  +----------+  +----------+                       +---------+  +----------+  +----------+
+| Window  |  | Keyboard |  | Dynamics |                       | Window  |  | Keyboard |  | Dynamics |
+| ncurses |  | ncurses  |  | physics  |                       | ncurses |  | ncurses  |  | physics  |
++----+----+  +----+-----+  +----+-----+                       +----+----+  +----+-----+  +----+-----+
+     \          |            /                                     \          |            /
+      \         |           /                                       \         |           /
+       v         v          v                                         v         v          v
++-----------------------------------------------------------------------------------------------+
+|          Local IPC on each host: POSIX Shared Memory (newBlackboard) + Named Semaphore       |
+|        - Local drone state is computed by Dynamics and shown by Window (via blackboard)      |
+|        - Network thread reads/writes remote state into the same blackboard                   |
++-----------------------------------------------------------------------------------------------+
+
+                    TCP connection between the two masters (network_thread)
+           +------------------------------  socket  --------------------------------+
+           |                    line-based protocol + ACKs                          |
+           +------------------------------------------------------------------------+
+```
+
+---
 
 ### 8.1 Modes of Operation
 
@@ -246,8 +289,10 @@ At startup, `master` asks for the operating mode:
   Runs the full system: `Window`, `Dynamics`, `Keyboard`, `Watchdog`, `Obstacle`, `Target`.
 
 - **(2) Networked simulation (Assignment 3 mode)**  
-  Runs only: `Window`, `Dynamics`, `Keyboard` and starts a **network thread** inside `master`.  
-  In this mode, **Watchdog / Obstacle / Target are disabled** as required by the Assignment 3 spec.
+  Runs only: `Window`, `Dynamics`, `Keyboard` **plus** a networking thread inside `master`.  
+  In this mode, **Watchdog / Obstacle / Target are disabled**.
+
+---
 
 ### 8.2 Server / Client Roles
 
@@ -255,118 +300,134 @@ In networked mode, the user selects the role:
 
 - **Server**
   - Binds and listens on a user-defined port.
-  - Accepts one client connection.
-  - Sends the simulation **world size** to the client during handshake.
+  - Accepts **one** client connection.
+  - Exports the **world size** (window size) to the client during handshake.
 
 - **Client**
   - Connects to a given server IP and port.
-  - Receives the simulation **world size** and applies it (size lock) so both peers use the same logical world.
+  - Receives the **world size** and applies it to its own blackboard so both peers share the same logical world.
 
-Networking is implemented inside `master.c` via a dedicated **pthread** (`network_thread`) which bridges socket data into the shared blackboard (`newBlackboard`) under semaphore protection.
+**Important implementation detail (client startup order):**  
+On the **client**, `master` waits briefly for the `size W H` handshake to complete (sets an internal `net_size_ready` flag) before launching ncurses children, so `Window` starts with the correct server-sized world.
+
+---
 
 ### 8.3 World Size Synchronization (Handshake)
 
-To ensure both peers render the same environment, the **server exports its actual window size**:
+To ensure both peers simulate the same world dimensions, the **server takes its actual terminal size** from the `Window` process and sends it to the client.
 
-- The server waits until `Window` publishes a valid `(W,H)` into the blackboard.
-- Then it sends: `size W H`
-- The client stores the received `W,H` into:
+- `Window` publishes its terminal size into:
   - `bb->max_width`
   - `bb->max_height`
+  - and sets `bb->win_ready = 1`
+- The server networking thread waits until `win_ready` is set, then sends:  
+  `size W H`
 
-During handshake:
+**Handshake sequence (line-based):**
 1. **Server → Client:** `ok`
 2. **Client → Server:** `ook`
 3. **Server → Client:** `size W H`
 4. **Client → Server:** `sok`
 
-#### Preventing Window from overwriting network size
-In local mode, `window.c` updates the world size using:
-- `getmaxyx(stdscr, bb->max_height, bb->max_width);`
+After handshake:
+- Both peers set `bb->net_lock_size = 1` so `Window` stops overwriting `bb->max_width/max_height` on terminal resize.
+- On the **client**, `master` also exports `BB_LOCK_SIZE=1` (environment variable) before launching `Window`, so the client window always respects the synchronized server size.
 
-In network mode, `Window` must **not** overwrite the synchronized size.
-To do that:
-- On the client side, `master` exports: `BB_LOCK_SIZE=1`
-- Both peers also set `bb->net_lock_size=1` after handshake
+**Why no “forced terminal geometry”:**  
+This version does **not** attempt to force `gnome-terminal` / `konsole` geometry flags from code (some setups exit immediately, especially on Wayland).  
+Instead, the server simply uses whatever terminal size it starts with, and the client mirrors it via handshake.
 
-So `Window` preserves the synchronized size in network mode.
-
-#### Client terminal smaller than server
-If the client terminal is **smaller** than the server `(W,H)`, `Window` **does not exit/crash**:
-- It draws using the available space (a scaled view).
-- A small hint is shown briefly (“scaled view”).
-- For a perfect **1:1** view, make the client terminal wider/taller.
+---
 
 ### 8.4 Virtual Coordinate System
 
-To avoid coordinate inconsistencies across machines/terminals, exchanged positions use a **virtual coordinate system**:
+To avoid coordinate inconsistencies between different terminals/machines, exchanged positions are not sent as raw ncurses coordinates.
+
+Instead, the code maps the local grid into a **virtual world**:
 
 - Virtual origin is **bottom-left**
-- Positions are normalized and exchanged as **floating-point** values (e.g. `%.6f`)
-- Local ncurses coordinates are converted by:
+- Values are exchanged as floating point numbers (formatted like `%.6f`)
+- Range is `[0 .. VIRTUAL_WORLD_SIZE]` where `VIRTUAL_WORLD_SIZE = 100.0`
+
+Mapping rules:
+- Conversion uses only the **playable area** (left side), excluding the inspection panel width.
+- Helper functions in `master.c`:
   - `local_to_virtual(...)`
   - `virtual_to_local(...)`
 
-This keeps peer-to-peer position exchange consistent even when local rendering details differ.
+---
 
 ### 8.5 Exchanged State and Coupling Logic
 
-The network loop runs at ~33 Hz (`usleep(30000)`).
+The networking loop runs at ~33 Hz (`usleep(30000)`).
 
 #### Server → Client: send server drone position
 - Server sends:
   - `drone`
-  - `VX VY` (virtual coordinates)
+  - `<VX> <VY>`
 - Client acknowledges with:
   - `dok`
-- Client stores the received position into:
+- Client converts the received virtual coordinates to local coordinates and stores them in:
   - `bb->remote_drone_x`
   - `bb->remote_drone_y`
 
-#### Server ← Client: receive client drone position as a dynamic obstacle
+#### Client → Server: send client drone position as a dynamic obstacle
 - Server requests:
   - `obst`
 - Client replies with:
-  - `VX VY` (its own drone position in virtual coordinates)
+  - `<VX> <VY>` (its own drone position, virtual)
 - Server acknowledges with:
   - `pok`
 
-Server converts the received position to local coords and injects it into the blackboard as obstacle index 0:
+On the server side, the received position is converted to local coordinates and injected into the blackboard as **obstacle index 0**:
 - `bb->obstacle_xs[0] = ox`
 - `bb->obstacle_ys[0] = oy`
-- `bb->n_obstacles = 1`
 
-This allows the server-side dynamics to treat the remote drone as a **dynamic obstacle** (repulsion-based interaction).
+This makes the remote drone act as a **dynamic obstacle** (repulsion-based interaction) in the server’s dynamics.
+
+---
 
 ### 8.6 Message Protocol Summary (Line-based + ACK)
 
-All messages end with `\n` and are synchronized with ACKs.
+All messages end with `\n` and are synchronized with ACKs:
 
 **Handshake**
 - `ok`  ↔ `ook`
 - `size W H` ↔ `sok`
 
 **Main loop**
-- `drone` + `VX VY` ↔ `dok`
-- `obst`  + `VX VY` ↔ `pok`
+- `drone` + `<VX> <VY>` ↔ `dok`
+- `obst`  + `<VX> <VY>` ↔ `pok`
 
 **Shutdown**
 - Server sends `q`
 - Client replies `qok`
-- Both peers exit cleanly.
+- Client sets `bb->state = 2` and exits cleanly.
 
-If the socket disconnects unexpectedly, `net_lost=1` is set and the local simulation terminates cleanly.
+**Unexpected disconnect:**
+- If the socket closes or any protocol step fails, the networking thread sets `net_lost=1`.
+- The master process detects it and shuts down the local simulation cleanly.
 
-### 8.7 Window Updates for Assignment 3
+---
 
-`window.c` supports network mode:
+### 8.7 Window Behavior in Network Mode
+
+`window.c` supports Assignment 3 features:
 
 - **Remote drone visualization:**  
   When `bb->remote_drone_x/y` are valid, the remote peer drone is displayed as **`X`** (bold).  
   The local drone is displayed as **`D`** (bold).
 
-- **World border (geofence visualization):**  
-  A border is drawn around the actual world size (`bb->max_width x bb->max_height`) so the allowed play area is visually clear.
+- **Client-side size lock (`BB_LOCK_SIZE` / `net_lock_size`):**  
+  In client mode, `Window` does not overwrite `bb->max_width/max_height` and renders inside a fixed frame.
+
+- **Client terminal smaller than server:**  
+  The client `Window` does **not crash/exit** if its terminal is smaller than the server’s size.
+  - If the terminal is extremely small, it asks the user to resize (a short message is shown).
+  - If it is just smaller than the server, it continues running and shows a brief “scaled view” hint.
+  - For a perfect **1:1** view, resize the client terminal to at least the server’s `(W,H)`.
+
+---
 
 ### 8.8 How to Run Assignment 3
 
@@ -406,9 +467,10 @@ This project includes:
 - Systematic debug logging  
 - Clean IPC resource cleanup  
 - Assignment 3: TCP socket-based client/server communication (line-based + ACK)  
-- Assignment 3: world size handshake (`size W H`) + size lock (`BB_LOCK_SIZE` / `net_lock_size`)  
-- Assignment 3: virtual coordinate system + remote drone visualization (`X`)  
+- Assignment 3: world-size handshake (`size W H`) sourced from server `Window` + size lock (`BB_LOCK_SIZE` on client, `net_lock_size` on both peers)  
+- Assignment 3: virtual coordinate system (`VIRTUAL_WORLD_SIZE=100`) + remote drone visualization (`X`)  
 - Assignment 3: remote drone treated as a dynamic obstacle on the server (`obstacle[0]`)  
+- Assignment 3: clean shutdown + disconnect handling (`q/qok`, `net_lost`, SIGINT/SIGTERM)  
 
 After normal termination, no leftover FIFOs or shared memory objects should remain.
 
@@ -439,18 +501,3 @@ Based on the feedback from Assignment 1, the following significant issues were c
 
 ## GitHub Repository
 https://github.com/mahdibaghban27/blackboard-drone-simulator
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
