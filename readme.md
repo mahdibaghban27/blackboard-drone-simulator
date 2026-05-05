@@ -506,34 +506,6 @@ https://github.com/mahdibaghban27/blackboard-drone-simulator
 
 
 
-## Project Contributors
-This project was developed by:
-
-Author :
-- Mahdi Baghban Ghalehchi
-- S6741099
-
-Teammate:
-- Mihret Kochito Wolde
-- S7229950
-
-The date of the exam:
-- 10/2/2026
-
-The date of Peer-to-Peer Network Test:
-- 16/2/2026
-
-Course: ARP – A.Y 2025-2026 
-
-
-
-
-
-
-
-
-
-
 
 
 
